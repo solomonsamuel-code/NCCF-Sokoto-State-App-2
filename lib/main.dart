@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-
-import 'screens/welcome_screen.dart';
-import 'screens/login_screen.dart';
 import 'screens/auth_gate.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase init error: $e');
+  }
   runApp(const NCCFSokotoApp());
 }
 
@@ -19,15 +20,8 @@ class NCCFSokotoApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'NCCF Sokoto',
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-      ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const WelcomeScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/auth': (context) => const AuthGate(),
-      },
+      theme: ThemeData(primarySwatch: Colors.green),
+      home: const AuthGate(), // Entry point: decides where to go
     );
   }
 }

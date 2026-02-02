@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/member.dart';
-import '../services/member_service.dart';
 
 class RegisterMemberScreen extends StatefulWidget {
   const RegisterMemberScreen({super.key});
@@ -13,106 +13,145 @@ class RegisterMemberScreen extends StatefulWidget {
 class _RegisterMemberScreenState extends State<RegisterMemberScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController nyscController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _stateCodeController = TextEditingController();
+  final TextEditingController _batchController = TextEditingController();
+  final TextEditingController _streamController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
-  String selectedBatch = 'A';
-  String selectedStream = '1';
+  bool _isLoading = false;
 
-  bool isLoading = false;
+  Future<void> _registerMember() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  final MemberService _memberService = MemberService();
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Create user in Firebase Auth
+      UserCredential userCred = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim());
+
+      // Create member object
+      Member newMember = Member(
+        uid: userCred.user!.uid,
+        name: _nameController.text.trim(),
+        nyscStateCode: _stateCodeController.text.trim(),
+        batch: _batchController.text.trim(),
+        stream: _streamController.text.trim(),
+        email: _emailController.text.trim(),
+        phoneNumber: _phoneController.text.trim(),
+      );
+
+      // Save to Firestore
+      await FirebaseFirestore.instance
+          .collection('members')
+          .doc(newMember.uid)
+          .set(newMember.toMap());
+
+      // Registration successful → redirect to Dashboard via AuthGate
+      // FirebaseAuth automatically updates auth state
+
+    } on FirebaseAuthException catch (e) {
+      String message = 'Registration failed';
+      if (e.code == 'email-already-in-use') {
+        message = 'Email already registered';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak';
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _stateCodeController.dispose();
+    _batchController.dispose();
+    _streamController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Member Registration')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
+      appBar: AppBar(title: const Text('Register Member')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(labelText: 'Full Name'),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter full name' : null,
+                    ),
+                    TextFormField(
+                      controller: _stateCodeController,
+                      decoration:
+                          const InputDecoration(labelText: 'NYSC State Code'),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter state code' : null,
+                    ),
+                    TextFormField(
+                      controller: _batchController,
+                      decoration: const InputDecoration(labelText: 'Batch (A/B/C)'),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter batch' : null,
+                    ),
+                    TextFormField(
+                      controller: _streamController,
+                      decoration:
+                          const InputDecoration(labelText: 'Stream (1/2)'),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter stream' : null,
+                    ),
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter email' : null,
+                    ),
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: const InputDecoration(labelText: 'Phone'),
+                    ),
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      obscureText: true,
+                      validator: (value) =>
+                          value!.length < 6 ? 'Password too short' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: _registerMember,
+                      child: const Text('Register'),
+                    ),
+                  ],
                 ),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter your name' : null,
               ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: nyscController,
-                decoration: const InputDecoration(
-                  labelText: 'NYSC State Code',
-                ),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter state code' : null,
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                value: selectedBatch,
-                decoration: const InputDecoration(labelText: 'Batch'),
-                items: const [
-                  DropdownMenuItem(value: 'A', child: Text('Batch A')),
-                  DropdownMenuItem(value: 'B', child: Text('Batch B')),
-                  DropdownMenuItem(value: 'C', child: Text('Batch C')),
-                ],
-                onChanged: (value) =>
-                    setState(() => selectedBatch = value!),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: selectedStream,
-                decoration: const InputDecoration(labelText: 'Stream'),
-                items: const [
-                  DropdownMenuItem(value: '1', child: Text('Stream 1')),
-                  DropdownMenuItem(value: '2', child: Text('Stream 2')),
-                ],
-                onChanged: (value) =>
-                    setState(() => selectedStream = value!),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: isLoading ? null : _submit,
-                child: isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Register'),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    setState(() => isLoading = true);
-
-    final member = Member(
-      uid: user.uid,
-      name: nameController.text.trim(),
-      nyscStateCode: nyscController.text.trim(),
-      batch: selectedBatch,
-      stream: selectedStream,
-      email: user.email ?? '',
-      phoneNumber: user.phoneNumber ?? '',
-    );
-
-    await _memberService.saveMember(member);
-
-    setState(() => isLoading = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registration successful')),
-      );
-    }
   }
 }
